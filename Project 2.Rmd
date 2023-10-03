@@ -1,0 +1,289 @@
+---
+title: "Project 2"
+author: "QH Z"
+date: "2022-10-04"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+## A
+
+```{r setup, message=FALSE}
+setwd("~/Desktop/Project 2")
+library(readr)     # package for fast read rectangular data
+library(dplyr)     # package for data manipulation
+library(estimatr)  # package for commonly used estimators with robust SE
+library(texreg)    # package converting R regression output to LaTeX/HTML tables
+library(plm)       # package for estimating linear panel data models
+
+rm(list = ls()) 
+id = read_csv("income_democracy.csv") 
+attach(id)
+```
+
+## Qestion 1
+
+By looking through the data set, it is not balanced. It means that not all the variables are observed for all the entities and every time periods. Again, checked by is.pbalanced. 
+```{r balanced}
+is.pbalanced(id)
+```
+
+## Qestion 2
+
+## (a) 
+Return the value of dem_ind for the United States in 2000. compute the mean value of dem_ind for United States and Libya over years.
+```{r mean}
+id[which(id$year == 2000&id$country=="United States"),3]    # find value dem_ind - (US, 2000)
+mean(dem_ind[country == "United States"])        # average value of dem_ind for United States
+mean(dem_ind[country == "Libya"])           # average value of dem_ind for Libya
+```
+
+## (b) 
+```{r missing value}
+sum(is.na(id$dem_ind))       #number of missing values
+ag=aggregate(dem_ind, list(id$country), mean)     #data set for mean dem_ind for each country
+ag=na.omit(ag)           #remove the NA 
+ag$Group.1[ag$x==0]   #list out the countries with lowest value in dem_ind
+sum(ag$x==1)       #number of countries with highest value in dem_ind  
+rm(ag)    
+```
+
+## Qestion 3
+
+## (a)
+```{r log_gdppc, echo =T, results='hide'}
+# without clustered
+pols1 = lm_robust(dem_ind~ log_gdppc, data = id, se_type = "stata")
+# with clustered
+pols2 = lm_robust(dem_ind~ log_gdppc, data = id, se_type = "stata", clusters = country)
+# fit fixed effects model
+fe1 = plm(dem_ind~ log_gdppc,
+          data = id, model = "within", index = c("country", "year"))
+# fit fixed effects model with time effects
+fe2 = plm(dem_ind~ log_gdppc,
+          data = id, model = "within", index = c("country", "year"), 
+          effect = "twoway")
+# additional variables are included in the regression model
+fe3 = plm(dem_ind~ log_gdppc + age_2+age_3+age_4+age_5+educ+log_pop,
+          data = id, model = "within", index = c("country", "year"), 
+          effect = "twoway")
+
+# compute cluster robust SE for FE estimator
+SE.fe1 = sqrt(diag(vcovHC(fe1, type="sss", cluster="group")))
+SE.fe2 = sqrt(diag(vcovHC(fe2, type="sss", cluster="group")))
+SE.fe3 = sqrt(diag(vcovHC(fe3, type="sss", cluster="group")))
+
+SE.pols1 = pols1$std.error
+SE.pols2 = pols2$std.error
+
+# compute p-values
+p.pols1 = 2*(1 - pnorm(abs(pols1$coefficients/SE.pols1)))
+p.pols2 = 2*(1 - pnorm(abs(pols2$coefficients/SE.pols2)))
+p.fe1 = 2*(1 - pnorm(abs(fe1$coefficients/SE.fe1)))
+p.fe2 = 2*(1 - pnorm(abs(fe2$coefficients/SE.fe2)))
+p.fe3 = 2*(1 - pnorm(abs(fe3$coefficients/SE.fe3)))
+
+# generate LaTeX code for Table 1
+texreg(list(pols1, pols2, fe1, fe2, fe3), include.ci = F, caption.above = T, digits = 3,
+       override.se = list(SE.pols1,SE.pols2,SE.fe1,SE.fe2, SE.fe3),
+       override.pvalues = list(p.pols1, p.pols2, p.fe1, p.fe2, p.fe3),
+       caption = "Democracy and Logarithm of real GDP per capita",
+       custom.model.names = c("(1)", "(2)", 
+                              "(3)", "(4)", "(5)"))
+```
+
+## (b)
+The estimated coefficient of log_gdppc is 0.236, representing that 1% change in real GDP per capita is related to 0.00236 change in index of democracy. From the column (2) in Table 1, we can see the coefficient is statistically significant under level of 5% significance.
+
+## (c)
+```{r increase predicted}
+summary(pols2)
+confint(pols2,'log_gdppc',level=0.95)
+```
+The estimated coefficient of log_gdppc is 0.236, representing that 1% change in real GDP per capita is related to 0.00236 change in index of democracy. Therefore, 10% increase in per capita GDP would be related to 0.0236 increase in index of democracy(dem_ind).
+
+95% confidence interval for the prediction:
+[0.0212,0.0259]
+
+The predicted increase in dem_ind is large, the index of democracy is range between 0 to 1. a 10% increase in real GDP per capita increase the index by 0.0236. for example, a country with index of democracy is 0.1, 10% increase in GDP per capita increase the index to 0.1236, which is a 23.6% increase in democracy index. 
+
+## (d)
+Compare column (1) (2) in table 1, we can see that the coefficients is the same with or without clustered. However the standard errors are quite different.
+
+Because when the observations within its groups are not independently and identically distributed, we need to use clustered standard errors to allows the serial correlation within each cluster across i in order to deal with the inconsistency of standard errors. clustered SEs are valid no matter heteroskedasticity or autocorrelation or both for large n.
+
+## Qestion 4
+
+## (a)
+Social structures. Each countries have its own social structures and this structures is not varies over time. However, the social sturctures are correlated with the per capita GDP and determinant of index of democracy. Therefore, it would lead to the omitted variable bias.
+
+## (b)
+```{r fixed effect predicted}
+confint(fe1,'log_gdppc',level=0.95)
+```
+The coefficient of log_gdppc is 0.084, representing that 1% change in real GDP per capita is related to 0.00084 change in index of democracy. From the column (3) in Table 1, we can see the coefficient is statistically significant at significance level of 5%.
+
+10% increase in per capita GDP would related to 0.0084 increase in index of democracy, which is a small effect. Suppose a country with index of democracy of 0.1, 10% increase in per capita GDP would turn the index to 0.1084, which is only 8.4% increase.
+
+The 95% confidence interval for the prediction is 
+[0.4396,1.2452]
+## (c)
+```{r exclude Azerbaijan}
+id.noA = subset(id, country != "Azerbaijan")      # Exclude the data of Azerbaijan
+pols3 = lm_robust(dem_ind~ log_gdppc, data = id.noA, se_type = "stata", clusters = country)
+summary(pols3)
+```
+The result is no different, estimated coefficient is the same on log_gdppc. The effect of absenting of Azerbaijan is absorbed by the country fixed effect completely. 
+
+## (d)
+World economy environment or world GDP. The current world economy environment varies over time but remains the same across countries. It is correlated with the log_gdppc and it is a determinant of index of democracy. Therefore, it would lead to omitted variable bias.
+
+## (e)
+```{r fixed effect}
+confint(fe2,'log_gdppc',level=0.95)
+```
+From column (4) in table 1, we can check that the coefficient on log_gdppc is 0.054. It interprets that 1% change in real GDP per capita is related to 0.00054 change in index of democracy. The estimated coefficient is not statistically significant at the level of 5%.
+
+For 10% increase in per capita GDP in a country, the dem_ind would increase 0.0054, which is a small effect. Suppose a country with index of democracy of 0.1, 10% increase in per capita GDP would turn the index to 0.1054, which is only 5.4% increase.
+
+The 95% confidence interval is 
+[-0.008024146, 1.07978]
+
+## (f)
+After adding the additional variables in the regression model (column (5) in table 1), the estimated coefficient of log_gdppc decrease to 0.025. The effect is much smaller than before. Also, the estimated coefficient of log_gdppc is not statistically significant at level of 5%. By checking R-squared, only 2.8% of the fitted data could be explained by the model. Therefore, additional variables should not be included.
+
+## Question 5
+After controlling country fixed effect and time effect, both estimated coefficient are not statistically significant at level of 5%, small effect of log_gdppc on dem_ind and small value in R-squared. We cannot conclude that the income have effect on the democracy. However, by country-specify fixed effect only, we can conclude that the income and democracy have positive correlation. 
+
+
+## B
+
+```{r set, message=FALSE}
+setwd("~/Desktop/Project 2")
+library(readr)     # package for fast read rectangular data
+library(dplyr)     # package for data manipulation
+library(estimatr)  # package for commonly used estimators with robust SE
+library(texreg)    # package converting R regression output to LaTeX/HTML tables
+library(plm)       # package for estimating linear panel data models
+library(car)       # package for functions used in "An R Companion to Applied Regression"
+library(lmtest)  
+
+rm(list = ls()) 
+EM = read_csv("US_Employment_0809.csv")  %>% mutate(age2 = age^2)
+attach(EM)
+```
+
+## (a)
+```{r lpm}
+lpm = lm_robust(employed ~ age + age2, data = EM, se_type = "stata")
+summary(lpm)
+linearHypothesis(lpm, c("age=0", "age2=0"), white.adjust=c("hc1"))
+```
+From LPM, the t-statistic of age is 8.616 and the p-value is less than 0.05. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2(-0.0003) is statistically significant at the level of 5%. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+## (b)
+```{r probit and logit}
+# fit Probit model
+probit = glm(employed ~ age + age2, data = EM, 
+             family = binomial(link = "probit"))
+# fit Logit model
+logit = glm(employed ~ age + age2, data = EM, 
+            family = binomial(link = "logit"))
+summary(probit)
+summary(logit)
+linearHypothesis(probit, c("age=0", "age2=0"), test=c("F"))
+linearHypothesis(logit, c("age=0", "age2=0"), test=c("F"))
+```
+From probit regression model, the p-values are less than 0.05. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2(-0.0014) is statistically significant at the level of 5%. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+From logit regression model, the p-values are less than 0.05. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2(-0.0026) is statistically significant at the level of 5%. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+The coefficients of two models are not identical. However, they give the similar predicted probabilities in most time. Probit and logit regression model use different probability functions. The probit model is the cumulative normal distribution function, while the logit model uses the CDF of logistic function. Historically, the logit model are more easier and faster on computation and interpretation. 
+
+## (c)
+```{r predicted prob}
+lpm.20 = predict(lpm, type = "response",
+                       newdata = data.frame(age=20,age2=20^2))
+lpm.40 = predict(lpm, type = "response",
+                       newdata = data.frame(age=40,age2=40^2))
+lpm.60 = predict(lpm, type = "response",
+                       newdata = data.frame(age=60,age2=60^2))
+
+probit.20 = predict(probit, type = "response",
+                       newdata = data.frame(age=20,age2=20^2))
+probit.40 = predict(probit, type = "response",
+                       newdata = data.frame(age=40,age2=40^2))
+probit.60 = predict(probit, type = "response",
+                       newdata = data.frame(age=60,age2=60^2))
+
+logit.20 = predict(logit, type = "response",
+                       newdata = data.frame(age=20,age2=20^2))
+logit.40 = predict(logit, type = "response",
+                       newdata = data.frame(age=40,age2=40^2))
+logit.60 = predict(logit, type = "response",
+                       newdata = data.frame(age=60,age2=60^2))
+
+lpm.20
+lpm.40
+lpm.60
+probit.20
+probit.40
+probit.60
+logit.20
+logit.40
+logit.60
+```
+The predicted probability of employment for a 40-year-old worker and a 60-year-old worker are almost identical for probit and logit model. For a 20-year-old worker, the prediction of probit model is 0.005 higher than logit model. The results of LPM for a 20-year-old worker and a 40-year-old worker are higher than the other two models, while a lower prediction value for a 60-year-old worker. All three models are giving a similar results on the predictions.
+
+## (d)
+```{r merge, echo =T, results='hide'}
+#create dummy variables for race
+white = as.numeric(race==1,1,0)
+black = as.numeric(race==2,1,0)
+#create new variable log weekly earnings
+learnwke = log(earnwke+1)
+EM1 = data.frame(EM,white, black, learnwke)
+
+# fit linear probability model
+lpm1 = lm_robust(employed ~ age + age2 + white + black + female + married + earnwke + ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths , data = EM1, se_type = "stata")
+lpm2 = lm_robust(employed ~ age + age2 + white + black + female + married + earnwke + learnwke+ ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths , data = EM1, se_type = "stata")
+# fit Probit model
+probit1 = glm(employed ~ age + age2 + white + black + female + married + earnwke + ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths, data = EM1, 
+             family = binomial(link = "probit"))
+probit2 = glm(employed ~ age + age2 + white + black + female + married + earnwke +learnwke + ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths, data = EM1, 
+             family = binomial(link = "probit"))
+
+# fit Logit model
+logit1 = glm(employed ~ age + age2 + white + black + female + married + earnwke + ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths, data = EM1, 
+            family = binomial(link = "logit"))
+logit2 = glm(employed ~ age + age2 + white + black + female + married + earnwke +learnwke + ne_states + so_states + ce_states + educ_aa + educ_adv + educ_ba + educ_hs + educ_lths, data = EM1, 
+            family = binomial(link = "logit"))
+
+# generate LaTeX code for Table 3
+texreg(list(lpm, probit, logit, lpm1, probit1, logit1, lpm2, probit2, logit2), include.ci = F, caption.above = T, digits = 3,
+       caption = "LPM,Probit and Logit Model for effect on employment",
+       custom.model.names = c("LPM", "Probit", "Logit","LPM", "Probit", "Logit","LPM", "Probit", "Logit"))
+
+```
+
+```{r test}
+linearHypothesis(lpm1, c("age=0", "age2=0"), white.adjust=c("hc1"))
+linearHypothesis(lpm2, c("age=0", "age2=0"), white.adjust=c("hc1"))
+linearHypothesis(probit1, c("age=0", "age2=0"), test=c("F"))
+linearHypothesis(probit2, c("age=0", "age2=0"), test=c("F"))
+linearHypothesis(logit1, c("age=0", "age2=0"), test=c("F"))
+linearHypothesis(logit2, c("age=0", "age2=0"), test=c("F"))
+```
+
+From LPM, without including log weekly earning variable, the coefficient of age is 0.025 and statistically significant at level of 5%. With log weekly earning variable, the coefficient of age is 0.022 and statistically significant at level of 5%. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2 is negative and statistically significant at the level of 5% with or without log weekly earning variable. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+From probit regression model, without including log weekly earning, the coefficient of age is 0.106 and statistically significant at level of 5%. With log weekly earning, the coefficient of age is 0.098 and statistically significant at level of 5%. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2 is negative and statistically significant at the level of 5% with or without log weekly earning variable. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+From logit regression model, without including log weekly earning, the coefficient of age is 0.192 and statistically significant at level of 5%. With log weekly earning, the coefficient of age is 0.179 and statistically significant at level of 5%. Besides, the F-test of joint hypothesis test on age and age2 have p-value(0.00) less than 0.05. Therefore, the age is a statistically significant determinant of employment. The coefficient on age2 is negative and statistically significant at the level of 5% with or without log weekly earning variable. Hence, there is evidence of a nonlinear effect of age on probability of being employed.
+
+After including the additional variables, the estimated coefficients of age are decreasing, which means that the model from (a) and (b) suffers from omitted variable bias. That is, age may be correlated with the additional variables. Therefore, the conclusions from (a) and (b) are not reliable.
+
+The coefficient of age and age squared are positive and negative respectively, which means the effect of age would increase first then declining. It represents that the younger worker and older worker are less likely to be employed compare to the middle-age worker. White people are the most likely to be employed, then followed by the not white or black and the least likely to be employed is black. All the region variables have positive coefficients which means people in western states is the least likely to be employed. educ_lths has the smallest value in coefficient, representing that people who highest level of education is less than a high school graduate is the one has the least likely to be employed. The log weekly earnings are positive, stating that 1% increase in weekly earnings would have positive effect on remaining employed.
+In conclusion, worker who is too young/old, black, female, married, low weekly wage, live in western state and level of education less than high school graduate would be hurt most by the financial crisis.

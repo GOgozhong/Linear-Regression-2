@@ -1,0 +1,161 @@
+---
+title: "Project 3"
+output:
+  word_document: default
+  html_document: default
+date: "2022-10-28"
+---
+
+```{r setup, include=FALSE}
+setwd("~/Desktop/project_3")
+library(readr) 
+library(estimatr) 
+library(texreg)
+library(AER)
+library(car)
+library(multcomp) 
+library(broom)
+library(ivreg)
+
+rm(list = ls()) 
+q1 = read_csv("brumm.csv") 
+attach(q1)
+```
+
+## A.
+## Question 1
+## a
+'output' is correlated with some variables which is unobserved and it is correlated with u. Because it is the growth rate of national output and it is affected by money supply, GDP and so on. The increase of money supply would tends to increases the national output.
+
+## b
+A valid instrumental variable need to satisfy (1)correlated with the explanatory variable of 'output' (2)uncorrelated with the error term (u). Initial level of real GDP only correlated with the 'output' then affect the 'inflat' via 'output'. high GDP means high output. The higher population's educational attainment, higher productivity, higher output. The same for 'inv' and 'poprate'. higher investment share of GDP, higher output. more people could create more output. Inflation/deflation would affected by the production cost and other factors, but would not directly affected by the population, GDP, education and population's growth rate. 
+
+## Question 2
+```{r ols}
+ols = lm(inflat ~ money + output, data = q1, se_type = "stata")
+summary (ols)
+linearHypothesis(ols, c("money=1", "output=-1"), test=c("F"))
+```
+```{r ols1,results='hide' }
+texreg(list(ols), include.ci = F, caption.above = T, digits = 3,
+       caption = "OLS",
+       custom.model.names = c("(1)"))
+```
+By test the economic theory, the p-value is strictly closer to 0 shows that it rejects the null hypothesis that the economic theory is true at the significance level of 5%. 
+
+## Question 3
+## a 
+```{r school}
+TSLS1 = iv_robust(inflat ~ money + output | school + money, data = q1,
+                  se_type = "stata", diagnostics = TRUE)
+summary(TSLS1, diagnostics = TRUE)
+linearHypothesis(TSLS1, c("money=1", "output=-1"), test=c("F"))
+```
+Testing the economic theory, we fail to reject the hypothesis that the coefficient of 'money' and 'output' are equal to '1' and '-1' respectively at the significance level of 5%.  The IV 'school' is weak IV if first stage coefficient is either zero or nearly zero. The 'school' is a weak instrument. By checking the 'weak instrument' of summary table, we can see the p-value of weak instruments is 0.902 which is not statistically significant. Therefore, we fail to reject the null hypothesis that the 'school' is weak instrument at the significance level of 5%. Only one IV 'school' and one endogenous regressor, thus the coefficients are exactly identified. Because this is the case of exact-identification, we cannot statistically test the exogeneity of the IV 'school'. 
+
+## b 
+```{r school_pop}
+TSLS2 = iv_robust(inflat ~ money + output | school + poprate + money, data = q1,
+                  se_type = "stata", diagnostics = TRUE)
+summary(TSLS2, diagnostics = TRUE)
+linearHypothesis(TSLS2, c("money=1", "output=-1"), test=c("F"))
+```
+Testing the economic theory, we fail to reject the hypothesis that the coefficient of 'money' and 'output' are equal to '1' and '-1' respectively at the significance level of 5%.. The coefficients of model is overidentified, the number of IV is one more than the number of endogenous regressor. According to the 'Weak instruments' test of summary table, p-value is 0.845 which means that we fail to reject the null hypothesis that the IVs are weak IV at the significance level of 5%. Therefore, the TSLS regression suffers from weak IV problem. Using the J-test for the test of exogeneity. df=m-k=2-1=1. Under the null hypothesis that both IVs are exogenous, we can see the J-statistic is 0.007 and p-value is 0.931 which is larger than 0.05. Therefore, we fail to reject the null hypothesis under 5% significance level and the instruments are exogenous. 
+
+## c
+```{r all four}
+TSLS3 = iv_robust(inflat ~ money + output | initial + school + inv + poprate + money, data = q1,
+                  se_type = "stata", diagnostics = TRUE)
+summary(TSLS3, diagnostics = TRUE)
+first_stage = lm_robust(output ~ initial + school + inv + poprate , data = q1, se_type = "stata")
+linearHypothesis(TSLS3, c("money=1", "output=-1"), test=c("F"))
+
+texreg(list(ols,TSLS1, TSLS2,first_stage,TSLS3), include.ci = F, caption.above = T, digits = 3,
+caption = "Inflation Equation",
+custom.model.names = c("(1) OLS", "(2) TSLS", "(3) TSLS","(4) First Stage","(5) TSLS" ))
+```
+Testing the economic theory using the IV estimates, we fail to reject the null hypothesis that the 'output = -1' and 'money = 1' at the significance level of 5%.. By checking the 'Weak instruments' test of summary table, p-value is 0.0178 which means that we reject the null hypothesis that the IVs are weak at the significance level of 5%. Therefore, the instruments are strong IVs. This TSLS regression does not suffer from weak IV problem. Using the J-test for the test of exogeneity. df=m-k=4-1=3. Under the null hypothesis that all IVs are exogenous, we can see the J-statistic is 6.419 and p-value is 0.0929 which is larger than 0.05. Therefore, we fail to reject the null hypothesis under 5% significance level and the instruments are exogenous. 
+
+## B.
+```{r setting, include=FALSE}
+library(readr) 
+library(dplyr) 
+library(ggplot2) 
+library(estimatr) 
+library(texreg)
+
+rm(list = ls())
+setwd("~/Desktop/project_3")
+q2 = read_csv("CONSUMP.csv") %>%
+  mutate(t = seq(1, length(c)),
+         gc_3 = dplyr::lag(gc_2, n = 1), 
+         gc_4 = dplyr::lag(gc_2, n = 2L),
+         gc_5 = dplyr::lag(gc_2, n = 3L),
+         i3_1 = dplyr::lag(i3, n = 1),
+         inf_1 = dplyr::lag(inf, n = 1))
+attach(q2)
+```
+## a
+```{r autocorrelations}
+acf(gc, plot = F, na.action = na.pass, lag.max = 5)
+```
+
+## b
+```{r PIH}
+PIH = lm(gc ~ gc_1,  data = q2, se_type = "stata")
+summary(PIH)
+linearHypothesis(PIH, c("gc_1=0"), test= c("F"))
+```
+The null hypothesis is that the coefficient of 'gc_t-1' is equal to zero, which means that there is no statistically significant relationship between the 'gc', and 'gc_t-1'. The alternative hypothesis is that the the coefficient of 'gc_t-1' is not equal to zero. The p-value of the test is 0.0073 (smaller than 0.05), thus we reject the null hypothesis and there is statistically significant relationship between 'gc' and 'gc_t-1' under the significance level of 5%. Based on this conclusion, the growth in consumption is related to the its value in last year, meaning that it may be predictable.
+
+## c
+```{r AR}
+AR0 = lm(gc ~ 1, data = q2) 
+AR1 = lm(gc ~ gc_1, data = q2) 
+AR2 = lm(gc ~ gc_1+ gc_2, data = q2)
+AR3 = lm(gc ~ gc_1+ gc_2+ gc_3, data = q2)
+AR4 = lm(gc ~ gc_1+ gc_2+ gc_3+ gc_4, data = q2)
+AR5 = lm(gc ~ gc_1+ gc_2+ gc_3+ gc_4 +gc_5, data = q2)
+```
+```{r A, results='hide'}
+texreg(list(AR0, AR1, AR2, AR3, AR4, AR5), include.ci = F, caption.above = T,
+digits = 3, caption = "Changes in growth in consumption", custom.model.names = c("AR(0)","AR(1)", "AR(2)", "AR(3)", "AR(4)", "AR(5)"))
+```
+
+```{r AIC}
+y = ts(gc, start=1959, end=1995, frequency = 1)
+AR.AICs = function(p) { AIC(arima(y, order = c(p, 0, 0))) }
+AR.BICs = function(p) { BIC(arima(y, order = c(p, 0, 0))) }
+which.min(sapply(1:5, AR.AICs))
+which.min(sapply(1:5, AR.BICs))
+```
+The lag length that are chosen by AIC and BIC are 1.
+
+## d
+```{r more}
+AR1_BIC = lm(gc ~ gc_1 +gy_1 +i3_1 +inf_1, data = q2) 
+```
+```{r , results='hide'}
+texreg(list(AR1_BIC), include.ci = F, caption.above = T,
+digits = 3, caption = "AR(1)", custom.model.names = c("AR(1)"))
+```
+```{r t}
+coeftest(AR1_BIC)
+linearHypothesis(AR1_BIC, c("gc_1=0","gy_1=0","i3_1=0","inf_1=0"), test= c("F"))
+```
+These new variables are not individually significant at the 5% level. However, the p-value (0.024) of jointly hypothesis test appeals that they are jointly significant at the 5% level.
+
+## e
+```{r tt, }
+linearHypothesis(AR1_BIC, c("gc_1=0"))
+```
+The p-value is 0.144873, which means that the coefficient of 'gc_1' is not statistically significant at the 5% level. We could say that we fail to reject that the coefficient of 'gc_1' is zero which means that the 'gc_1' is not correlated with 'gc' at the 5% level of significance. Therefore, we could say, based on the information provided, we do not have sufficient evidence to prove that the growth in consumption is predictable. It does not mean the PIH hypothesis is now supported due to lack of evidence.
+
+## f
+```{r }
+linearHypothesis(AR1_BIC, c("gc_1=0","gy_1=0","i3_1=0","inf_1=0"), test= c("F"))
+```
+The F-statistic is 3.2728 and the p-value is 0.02431, shows that we reject the null hypothesis of all coefficients are equal to zero. This conclusion is now agree with the conclusion in b, there is at least one lag variables (information known) could provide information so that we could predict the the growth in consumption.
+
+
+
